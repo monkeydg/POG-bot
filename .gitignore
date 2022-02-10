@@ -16,3 +16,5 @@ commands/running
 .idea/
 doc/build/
 *.diff
+yolov3.weights
+yolov3.cfg

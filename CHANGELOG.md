@@ -1,3 +1,7 @@
+# v3.7:
+- Added streamlit stat vizualisations
+- Replaced PM handling for stats to redirect to streamlit
+
 # v3.6:
 ### (Work In Progress)
 

@@ -216,9 +216,9 @@ def _add_init_handlers(client):
 
 
 # TODO: testing, to be removed
-def _test(client):
-    from template_test_file import test_hand
-    test_hand(client)
+#def _test(client):
+    #from template_test_file import test_hand
+    #test_hand(client)
 
 
 def _define_log(launch_str):
@@ -334,8 +334,8 @@ def main(launch_str=""):
     # Add init handlers
     _add_init_handlers(client)
 
-    if launch_str == "_test":
-        _test(client)
+    #if launch_str == "_test":
+    #    _test(client)
 
     # Add all cogs
     modules.loader.init(client)
@@ -351,6 +351,6 @@ if __name__ == "__main__":
         main("_test")
     else:
         print("Running mode: 'PROD', all output will be redirected to log files!\n"
-              "Make sure to run in 'DEV' mode if you want debug output!"
+              "Make sure to run in 'DEV' mode if you want debug output! "
               "Add a file called 'test' next to main.py to switch to 'DEV' mode")
-        main()
+        main("_test") # FORCE OVERRIDE RUN DEBUG MODE

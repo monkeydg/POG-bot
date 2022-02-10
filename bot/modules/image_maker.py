@@ -8,6 +8,8 @@ from PIL import Image, ImageDraw, ImageFont
 from asyncio import get_event_loop
 from datetime import datetime as dt
 import os
+import traceback
+from pathlib import Path
 
 # Internal imports
 from display.strings import AllStrings as display
