@@ -22,6 +22,17 @@ import pandas as pd
 import numpy as np
 import os, urllib, cv2
 
+# streamlit_app.py
+import streamlit as st
+import subprocess
+import sys
+
+subprocess.run([f"{sys.executable}", "script.py"])
+
+def generate_streamlit_url(player_stats, pog_stats):
+    pass
+
+
 # Streamlit encourages well-structured code, like starting execution in a main() function.
 def main():
     # Render the readme as markdown using st.markdown.
@@ -277,18 +288,6 @@ def yolo_v3(image, confidence_threshold, overlap_threshold):
 
 # Path to the Streamlit public S3 bucket
 DATA_URL_ROOT = "https://streamlit-self-driving.s3-us-west-2.amazonaws.com/"
-
-# External files to download.
-EXTERNAL_DEPENDENCIES = {
-    "yolov3.weights": {
-        "url": "https://pjreddie.com/media/files/yolov3.weights",
-        "size": 248007048
-    },
-    "yolov3.cfg": {
-        "url": "https://raw.githubusercontent.com/pjreddie/darknet/master/cfg/yolov3.cfg",
-        "size": 8342
-    }
-}
 
 if __name__ == "__main__":
     main()

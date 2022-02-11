@@ -504,9 +504,12 @@ def psb_usage(ctx, player, usages):
 
     return embed
 
-def player_stats(ctx, stats, recent_stats):
+def player_stats(ctx, stats, recent_stats, streamlit_url):
     embed = Embed(title=f"{stats.name}'s Stats:", colour=Color.blue())
-    embed.add_field(name="Recent (last 2 weeks)",
+    embed.add_field(name="Interactive Statistics",
+                value=f"{streamlit_url}\n",
+                inline=False)
+    embed.add_field(name="Recent summary (last 2 weeks)",
                     value=f"Matches played: {recent_stats.nb_matches_played}\n"
                           f"Play time: {'{:.1f}'.format(recent_stats.time_played / 60)} hours\n"
                           f"Score: {recent_stats.score}\n"
@@ -514,7 +517,7 @@ def player_stats(ctx, stats, recent_stats):
                           f"Kills per match: {'{:.1f}'.format(recent_stats.kills_per_match)}\n"
                           f"Most played class: {recent_stats.most_played_loadout}",
                     inline=False)
-    embed.add_field(name="All time",
+    embed.add_field(name="All time summary",
                     value=f"Matches played: {stats.nb_matches_played}\n"
                           f"Play time: {'{:.1f}'.format(stats.time_played / 60)} hours\n"
                           f"Total score: {stats.score}\n"
@@ -522,6 +525,7 @@ def player_stats(ctx, stats, recent_stats):
                           f"Kills per match: {'{:.1f}'.format(stats.kills_per_match)}\n"
                           f"Most played class: {stats.most_played_loadout}",
                     inline=False)
-
+    embed.set_thumbnail(
+        url="https://media.discordapp.net/attachments/739231714554937455/739522071423614996/logo_png.png")
     embed.set_footer(text="Note: Tracking stats only after POG match 569.")
     return embed
