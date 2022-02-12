@@ -2,11 +2,14 @@ import modules.database as db
 import modules.config as cfg
 import modules.tools as tools
 import operator
+import subprocess
+import os
+import signal
 
 
 class PlayerStat:
-    def __init__(self, p_id, name, data=None):
-        self.id = p_id
+    def __init__(self, player_id, name, data=None):
+        self.id = player_id
         self.name = name
         if data:
             self.matches = data["matches"]
@@ -98,9 +101,9 @@ class PlayerStat:
         return f"<@{self.id}>"
 
     @classmethod
-    async def get_from_database(cls, p_id, name):
-        dta = await db.async_db_call(db.get_element, "player_stats", p_id)
-        return cls(p_id, name=name, data=dta)
+    async def get_from_database(cls, player_id, name):
+        dta = await db.async_db_call(db.get_element, "player_stats", player_id)
+        return cls(player_id, name=name, data=dta)
 
     def add_data(self, match_id: int, time_played, player_score):
         self.matches.append(match_id)
@@ -263,13 +266,9 @@ class MatchStat:
         return f"<@{self.id}>"
 
     @classmethod
-    async def get_from_database(cls, p_id, name):
-        dta = await db.async_db_call(db.get_element, "player_stats", p_id)
-        return cls(p_id, name=name, data=dta)
-
-    @classmethod
-    async def generate_streamlit_url(cls, p_id):
-        pass
+    async def get_from_database(cls, player_id, name):
+        dta = await db.async_db_call(db.get_element, "player_stats", player_id)
+        return cls(player_id, name=name, data=dta)
 
     def add_data(self, match_id: int, time_played, player_score):
         self.matches.append(match_id)
@@ -301,3 +300,29 @@ class MatchStat:
         dta["pick_order"] = self.pick_order
         dta["loadouts"] = [loadout.get_data() for loadout in self.loadouts.values()]
         return dta
+
+
+class StreamlitApp:
+    _counter = 0 # we need to keep track of how many streamlit instances we spawn so that we don't overload our server with separate streamlit instances running on hundreds of ports
+    def __init__(self, player_stats, player_id, player_name):
+        StreamlitApp._counter += 1
+        self.id = StreamlitApp._counter
+        self.server_port = 8500 + StreamlitApp._counter  # we start at server port 8501, the streamlit default, then increment by one for each streamlit instance spawned
+
+        # if there is already a streamlit instance running for the player that requested it, we don't need to spawn another one.
+        #todo: add code here ^^
+
+        # somehow we need to pass the player id or player data to the streamlit app when running it
+        self.process = subprocess.Popen(["streamlit", "run", "./modules/streamlit.py", "--server.port", str(self.server_port), "--", "--player_id", str(player_id), "--player_name", str(player_name)]) #, preexec_fn=os.setsid)  # unfortunately we can't use setsid on windows, only linux. TLDR don't deploy this on windows lol.
+        self.player_stats = player_stats
+        self.player_name = player_name
+        self.url = f"http://localhost:{self.server_port}/"
+
+    #@classmethod
+    async def spawn(self, player_stats):
+        return "test"
+
+    #@classmethod
+    async def kill(self):  # unfortunately we can't use this method on windows, only linux. TLDR don't deploy this on windows lol.
+        os.killpg(os.getpgid(self.process.pid), signal.SIGTERM)
+        return "test"
