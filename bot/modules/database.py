@@ -124,7 +124,7 @@ def push_element(collection: str, e_id: int, doc: dict):
         raise DatabaseError(f"set_field: Element {e_id} doesn't exist in collection {collection}")
 
 
-def get_element(collection: str, item_id: int) -> (dict, None):
+def get_element(collection: str, item_id: int) -> dict:
     """
     Get a single element.
 
@@ -132,6 +132,11 @@ def get_element(collection: str, item_id: int) -> (dict, None):
     :param item_id: Element id.
     :return: Element found, or None if not found.
     """
+    # if not _collections:  # hacky way of dealing with calling db methods from subprocesses where databases.py wasnn't initialized. This needs to be fixed.
+    #     # I couldn't figure out why _collections global variable didn't persist as expected
+    #     import config as cfg
+    #     cfg.get_config(LAUNCH_STR)
+    #     init(cfg.database)
     if _collections[collection].count_documents({"_id": item_id}) == 0:
         return
     item = _collections[collection].find_one({"_id": item_id})

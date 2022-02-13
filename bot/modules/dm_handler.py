@@ -34,9 +34,13 @@ async def on_stats(user):
         await disp.NO_RULE.send(user, "stats", cfg.channels["rules"]) # if the player isn't registered, he can't see his stats. We send them to the rules channel.
         return
     log.info(f"Stats request from player id: [{player.id}], name: [{player.name}]")
-    all_stats = await PlayerStat.get_from_database(player.id, player.name)
+
+    #FOR DEGUBBING ONLY:
+    all_stats = await PlayerStat.get_from_database(176428787968376833, "Saiyan")
+
+    #all_stats = await PlayerStat.get_from_database(player.id, player.name)
     recent_stats = await stat_processor.get_new_stats(Match, all_stats)
     #pog_stats = await stat_processor.get_from_database(Match, all_stats)
     #streamlit_url = await StreamlitApp.spawn(all_stats) #, pog_stats) # calls a method from streamlit module after passing in the player stats from the playerStats and newMatches collections from the mongodb database
-    streamlit_instance = StreamlitApp(all_stats, player.id, player.name) #, pog_stats) # spawns a streamlit app
+    streamlit_instance = StreamlitApp(all_stats) #, pog_stats) # spawns a streamlit app
     await disp.DISPLAY_STATS.send(user, stats=all_stats, recent_stats=recent_stats, streamlit_url=streamlit_instance.url) # displays streamlit url in discord bot DM using the strings.py and embeds.py modules

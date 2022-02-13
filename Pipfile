@@ -15,6 +15,7 @@ python-dateutil = "==2.8.1"
 schedule = "==1.1.0"
 Pillow = "==8.4.0"
 streamlit = "*"
+jsonpickle = "*"
 
 [dev-packages]
 sphinx = "==4.2.0"

@@ -5,6 +5,7 @@ import operator
 import subprocess
 import os
 import signal
+import jsonpickle
 
 
 class PlayerStat:
@@ -304,25 +305,25 @@ class MatchStat:
 
 class StreamlitApp:
     _counter = 0 # we need to keep track of how many streamlit instances we spawn so that we don't overload our server with separate streamlit instances running on hundreds of ports
-    def __init__(self, player_stats, player_id, player_name):
+    def __init__(self, player_stats):
         StreamlitApp._counter += 1
         self.id = StreamlitApp._counter
+        self.player_stats = player_stats
+
         self.server_port = 8500 + StreamlitApp._counter  # we start at server port 8501, the streamlit default, then increment by one for each streamlit instance spawned
 
         # if there is already a streamlit instance running for the player that requested it, we don't need to spawn another one.
         #todo: add code here ^^
 
-        # somehow we need to pass the player id or player data to the streamlit app when running it
-        self.process = subprocess.Popen(["streamlit", "run", "./modules/streamlit.py", "--server.port", str(self.server_port), "--", "--player_id", str(player_id), "--player_name", str(player_name)]) #, preexec_fn=os.setsid)  # unfortunately we can't use setsid on windows, only linux. TLDR don't deploy this on windows lol.
-        self.player_stats = player_stats
-        self.player_name = player_name
+        # we need to pass the player id and player data to the streamlit app before running it
+        # choosing to use command line arguments is much better than URL query strings because it makes it impossible for players to access other players' streamlit pages
+        # if URL query strings end up being desired, read https://github.com/streamlit/streamlit/issues/430
+        # passing the data as a json object is not very pythonic BUT it is the most flexible if we move the streamlit app to a different environment. I've decided to use a json object for now just for this added flexibility.
+        # using a json file also has the added benefit of not needing to do any database opeterations within our streamlit app, making it much more modular. Also jsonpickle makes it easy to change between python objects and json
+        self.process = subprocess.Popen(["streamlit", "run", "./modules/interactive_stats.py", "--server.port", str(self.server_port), "--", "--player_stats", jsonpickle.encode(self.player_stats)]) #, preexec_fn=os.setsid)  # unfortunately we can't use setsid on windows, only linux. TLDR don't deploy this on windows lol.
         self.url = f"http://localhost:{self.server_port}/"
 
-    #@classmethod
-    async def spawn(self, player_stats):
-        return "test"
 
-    #@classmethod
-    async def kill(self):  # unfortunately we can't use this method on windows, only linux. TLDR don't deploy this on windows lol.
+    def kill(self):  # unfortunately we can't use this method on windows, only linux. TLDR don't deploy this on windows lol.
         os.killpg(os.getpgid(self.process.pid), signal.SIGTERM)
         return "test"

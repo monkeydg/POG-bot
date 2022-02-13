@@ -1,20 +1,5 @@
-# -*- coding: utf-8 -*-
-# Copyright 2018-2019 Streamlit Inc.
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#    http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-
-# This demo lets you to explore the Udacity self-driving car image dataset.
-# More info: https://github.com/streamlit/demo-self-driving
+# the goal is to avoid imports from the rest of the project where possible,
+# so that we can eventually deploy the streamlit module on a separate instance with minimal refactoring
 
 import streamlit as st
 import altair as alt
@@ -23,47 +8,180 @@ import numpy as np
 import os
 import argparse
 import sys
-from ..classes.stats import PlayerStat
+import asyncio
+import jsonpickle
+from datetime import datetime as dt
+from collections import Counter
 from logging import getLogger
-
 log = getLogger("pog_bot")
 
-def generate_streamlit_url(player_stats): #, pog_stats):
-    
-    return("https://streamlit.io/welcome/")
+MATCH_LENGTH = 10  # todo: pull the length of each match half from config.cfg without integrating too heavily with the rest of the project.
 
+# these values are hard-coded based on how the Planetside 2 census reports loadouts.
+# We could pull these from config.py but for now we'll leave it hard-coded to keep interactive_stats.py more standalone from the rest of the project
+LOADOUT_IDS_DICT = {
+    "Infiltrator": [1, 8, 15],
+    "Light Assault": [3, 10, 17],
+    "Medic": [4, 11, 18],
+    "Engineer": [5, 12, 19],
+    "Heavy Assault": [6, 13, 20],
+    "Max": [7, 14, 21]
+}
 
-def main():
-    # see https://github.com/streamlit/streamlit/pull/450 and https://github.com/streamlit/streamlit/issues/337 for details around custom arg implementation and why we use two "--" before arguments
-    parser = argparse.ArgumentParser(description='extracts player id from command line')
-    parser.add_argument('--player_id', action='append', default=[], help="Enter the discord/player id. It should look something like this: '251201892372185088'")
+class AutoDict(dict):
+    def auto_add(self, key, value):
+        if key in self:
+            self[key] += value
+        else:
+            self[key] = value
+
+class LoadoutStats:
+    def __init__(self, l_id, data):
+        self.id = l_id
+        self.weight = data.weight
+        self.kills = data.kills
+        self.deaths = data.deaths
+        self.net = data.net
+        self.score = data.score
+
+class PlayerStat:
+    def __init__(self, player_id, name, data):
+        self.id = player_id
+        self.name = name
+        self.matches = data.matches
+        self.matches_won = data.matches_won
+        self.matches_lost = data.matches_lost
+        self.time_played = data.time_played
+        self.times_captain = data.times_captain
+        self.pick_order = AutoDict(data.pick_order)
+        self.loadouts = dict()
+        for l_data in data.loadouts.values():
+            l_id = l_data.id
+            self.loadouts[l_id] = LoadoutStats(l_id, l_data)
+
+    @property
+    def nb_matches_played(self):
+        return len(self.matches)
+
+    @property
+    def kills_per_match(self):
+        return self.kpm * MATCH_LENGTH * 2
+
+    @property
+    def kpm(self):
+        if self.time_played == 0:
+            return 0
+        return self.kills / self.time_played
+
+    @property
+    def cpm(self):
+        if self.nb_matches_played < 10:
+            return 0
+        return self.times_captain / self.nb_matches_played
+
+    @property
+    def score(self):
+        score = 0
+        for loadout in self.loadouts.values():
+            score += loadout.score
+        return score
+
+    @property
+    def kills(self):
+        kills = 0
+        for loadout in self.loadouts.values():
+            kills += loadout.kills
+        return kills
+
+    @property
+    def deaths(self):
+        deaths = 0
+        for loadout in self.loadouts.values():
+            deaths += loadout.deaths
+        return deaths
+
+    @property
+    def net(self):
+        net = 0
+        for loadout in self.loadouts.values():
+            net += loadout.score
+        return net
+
+    @property
+    def kdr(self):
+        return self.kills / self.deaths
+
+async def main():
+    ### PARSING COMMAND LINE ARGUMENTS TO GET DATA FOR STREAMLIT APP ###
+    # see https://github.com/streamlit/streamlit/pull/450 and https://github.com/streamlit/streamlit/issues/337 for details around custom arg implementation and why we use two sets of "--" when building arguments
+    parser = argparse.ArgumentParser(description='Extracts player data from command line')
+    parser.add_argument('--player_stats', action='append', default=[], help="JSON representation of a PlayerStat object containing data about the given player")
 
     try:
         args = parser.parse_args()
-        player_id = int(args.player_id)
-        player_name = args.player_name
+        data = jsonpickle.decode(args.player_stats[0])
+        player_stats = PlayerStat(data.id, data.name, data=data)
     except SystemExit as e:
         # This exception will be raised if an invalid command line argument is used. Streamlit doesn't exit gracefully so we have to force it to stop ourselves.
         log.warning("Invalid command line argument. Exiting Streamlit app.")
-        print("ERROR!")
         os._exit(e.code)
 
-    # if player id is blank, don't load this page in streamlit app and instead display just overall pog stats
-
-
-    player_stats = PlayerStat.get_from_database(player_id, player_name)
-
-
+    # if player id is blank, don't load this page in streamlit app and instead display just overall pog stat
+    
+    ### STREAMLIT PAGE SETUP AND DATA VISUALIZATIONS ###
     POG_FAVICON = "https://cdn.discordapp.com/emojis/739512629277753455.webp?size=96&quality=lossless"
     POG_LOGO = "https://media.discordapp.net/attachments/739231714554937455/739522071423614996/logo_png.png"
     POG_BANNER = "https://cdn.discordapp.com/attachments/786308579015655474/942073850861072414/Banner_Planetside_Open_Games.png"
+
     # Set page title and favicon.
     st.set_page_config(
-        page_title="Planetside Open Games Statistics", page_icon=POG_FAVICON,
+        page_title=f"{player_stats.name}'s POG Statistics", page_icon=POG_FAVICON,
     )
 
-    # Render the readme as markdown using st.markdown.
-    readme_text = st.markdown("test 123\n\ntestig45\ntest678")
+    st.title(f"{player_stats.name}'s POG Statistics")
+    st.caption(f"Discord id: {player_stats.id}  |  Generated: {dt.utcnow().strftime('%Y-%m-%d %H:%M:%S')} UTC")
+    
+    # I intentionally acronyms because it's much more common in our community.
+    st.subheader(f"KDR: {round(player_stats.kdr, 2)}")  # Kill/Death Ratio
+    st.subheader(f"KPM: {round(player_stats.kpm, 2)}")  # Kills per Minute
+    st.subheader(f"% of matches as captain: {round(player_stats.cpm, 2)}")
+    st.subheader(f"Average kills per match: {round(player_stats.kills_per_match, 2)}")
+    
+
+
+    
+
+    loadout_scores = [loadout.score for loadout in player_stats.loadouts.values()]
+    loadout_ids = [loadout.id for loadout in player_stats.loadouts.values()]
+    loadout_scores_dict = dict(zip(loadout_ids, loadout_scores)) 
+
+    merged_loadouts = {
+    "Infiltrator": 0,
+    "Light Assault": 0,
+    "Medic": 0,
+    "Engineer": 0,
+    "Heavy Assault": 0,
+    "Max": 0
+    }
+
+    # as can be seen in loadout_ids_dict, there are some ids that correspond to the same loadout, so we need to merge them.
+    for loadout_id in loadout_scores_dict:
+        for loadout_name in LOADOUT_IDS_DICT:
+            if loadout_id in LOADOUT_IDS_DICT[loadout_name]:
+                merged_loadouts[loadout_name] += loadout_scores_dict[loadout_id]
+
+    df_loadout_scores = pd.DataFrame.from_dict(merged_loadouts, orient='index', columns=['Total Score'])
+    df_loadout_scores['Average Score'] = round(df_loadout_scores['Total Score'] / player_stats.nb_matches_played, 2)
+
+    df_loadout_scores
+
+    st.header("Total Score per Class")
+    st.bar_chart(df_loadout_scores['Total Score'])
+    
+    st.header("Average Score per Class")
+    st.bar_chart(df_loadout_scores['Average Score'])
+
+    st.markdown(args.player_stats[0])
 
     # Once we have the dependencies, add a selector for the app mode on the sidebar.
     st.sidebar.title("What to do")
@@ -198,4 +316,4 @@ def get_file_content_as_string(path):
     pass
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())
