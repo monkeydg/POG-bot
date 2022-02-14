@@ -10,8 +10,9 @@ import argparse
 import sys
 import asyncio
 import jsonpickle
-from datetime import datetime as dt
-from collections import Counter
+from datetime import datetime, timedelta
+import matplotlib.pyplot as plt
+from matplotlib.colors import ListedColormap
 from logging import getLogger
 log = getLogger("pog_bot")
 
@@ -28,39 +29,82 @@ LOADOUT_IDS_DICT = {
     "Max": [7, 14, 21]
 }
 
-class AutoDict(dict):
-    def auto_add(self, key, value):
-        if key in self:
-            self[key] += value
-        else:
-            self[key] = value
-
 class LoadoutStats:
     def __init__(self, l_id, data):
         self.id = l_id
-        self.weight = data.weight
-        self.kills = data.kills
-        self.deaths = data.deaths
-        self.net = data.net
-        self.score = data.score
+        self.weight = data["weight"]
+        self.kills = data["kills"]
+        self.deaths = data["deaths"]
+        self.net = data["net"]
+        self.score = data["score"]
+
+    @property
+    def kdr(self):
+        return self.kills / self.deaths
 
 class PlayerStat:
     def __init__(self, player_id, name, data):
         self.id = player_id
         self.name = name
-        self.matches = data.matches
-        self.matches_won = data.matches_won
-        self.matches_lost = data.matches_lost
-        self.time_played = data.time_played
-        self.times_captain = data.times_captain
-        self.pick_order = AutoDict(data.pick_order)
+        self.matches = data["matches"]
+        self.matches_won = data["matches_won"]
+        self.matches_lost = data["matches_lost"]
+        self.time_played = data["time_played"]
+        self.times_captain = data["times_captain"]
+        self.pick_order = data["pick_order"]
         self.loadouts = dict()
-        for l_data in data.loadouts.values():
-            l_id = l_data.id
+        for l_data in data["loadouts"].values():
+            l_id = l_data["id"]
             self.loadouts[l_id] = LoadoutStats(l_id, l_data)
+        self.loadout_scores = self.generate_loadout_scores_dict()
+        self.loadout_kdrs = self.generate_loadout_kdrs_dict()
+        
+    def merge_loadout_ids(self, unmerged_dict):
+        """
+        Given a dictionary with loadout ids as the key, it merges loadouts together where the id represents the same loadout, and adds the values together"""
+        merged = {
+        "Infiltrator": 0,
+        "Light Assault": 0,
+        "Medic": 0,
+        "Engineer": 0,
+        "Heavy Assault": 0,
+        "Max": 0
+        }
+
+        # as can be seen in loadout_ids_dict, there are some ids that correspond to the same loadout, so we need to merge them.
+        for id in unmerged_dict:
+            for name in LOADOUT_IDS_DICT:
+                if id in LOADOUT_IDS_DICT[name]:
+                    merged[name] += unmerged_dict[id]
+
+        return merged
+
+
+    def generate_loadout_scores_dict(self):
+        """
+        Generates a dictionary of loadout scores for the player. 
+        The dictionary key is the loadout name (e.g. "Medic") and the value is the score.
+        """
+        scores_list = [loadout.score for loadout in self.loadouts.values()]
+        ids_list = [loadout.id for loadout in self.loadouts.values()]
+        scores_dict_unmerged = dict(zip(ids_list, scores_list)) 
+
+        return self.merge_loadout_ids(scores_dict_unmerged)
+        
+
+    def generate_loadout_kdrs_dict(self):
+        """
+        Generates a dictionary of kill/death ratios for each loadout for the player. 
+        The dictionary key is the loadout name (e.g. "Medic") and the value is the kdr.
+        """
+        kdr_list = [loadout.kills/loadout.deaths for loadout in self.loadouts.values()]
+        ids_list = [loadout.id for loadout in self.loadouts.values()]
+        kdrs_dict_unmerged = dict(zip(ids_list, kdr_list))
+
+        return self.merge_loadout_ids(kdrs_dict_unmerged)
 
     @property
-    def nb_matches_played(self):
+    def num_matches_played(self):
         return len(self.matches)
 
     @property
@@ -74,10 +118,8 @@ class PlayerStat:
         return self.kills / self.time_played
 
     @property
-    def cpm(self):
-        if self.nb_matches_played < 10:
-            return 0
-        return self.times_captain / self.nb_matches_played
+    def cpm(self): # number of times captain on average
+        return self.times_captain / self.num_matches_played
 
     @property
     def score(self):
@@ -111,20 +153,58 @@ class PlayerStat:
     def kdr(self):
         return self.kills / self.deaths
 
+
+def get_color(score):
+    """
+    Returns a color for css highlighting based on whether a not a score is good.
+    A high performing score is above 1, medium is between 0.5 and 1, and low is below 0.5."""
+    if score > 1:
+        return "green"
+    elif score > 0.5:
+        return "orange"
+    else:
+        return "red"
+
+def activate_css():
+    """
+    Define new CSS classes for custom text highlighting."""
+    st.markdown("""
+    <style>
+    .h1 {
+        font-size:30px !important;
+    }
+    .bold {
+        font-weight: bold !important;
+    }
+    .green {
+        color: #006e0f !important;
+    }
+    .red {
+        color: #8f1800 !important;
+    }
+    .orange {
+        color: #db8700 !important;
+    }
+    </style>
+    """, unsafe_allow_html=True)  # we could put this into a styles.css file and import it, but with only a handful of css classes this is simpler.
+
 async def main():
-    ### PARSING COMMAND LINE ARGUMENTS TO GET DATA FOR STREAMLIT APP ###
-    # see https://github.com/streamlit/streamlit/pull/450 and https://github.com/streamlit/streamlit/issues/337 for details around custom arg implementation and why we use two sets of "--" when building arguments
-    parser = argparse.ArgumentParser(description='Extracts player data from command line')
+    # Parsing CLI arguments to get data for the streamlit app
+    # see https://github.com/streamlit/streamlit/pull/450 and https://github.com/streamlit/streamlit/issues/337 
+    # for details around custom arg implementation and why we use two sets of "--" when building arguments in the __init__ method of a StreamlitApp class
+    parser = argparse.ArgumentParser(description='extracts player data from command line')
+    parser.add_argument('--player_id', action='append', default=[], help="Discord/player id. It should look something like this: 251201892372185088")
+    parser.add_argument('--player_name', action='append', default=[], help="Discord nickname")
     parser.add_argument('--player_stats', action='append', default=[], help="JSON representation of a PlayerStat object containing data about the given player")
 
     try:
-        args = parser.parse_args()
+        args = parser.parse_args() # get player id, name, and stats from CLI arguments
         data = jsonpickle.decode(args.player_stats[0])
-        player_stats = PlayerStat(data.id, data.name, data=data)
+        player_stats = PlayerStat(int(args.player_id[0]), args.player_name[0], data) # initiate a new PlayerStats object with the input from CLI arguments
     except SystemExit as e:
         # This exception will be raised if an invalid command line argument is used. Streamlit doesn't exit gracefully so we have to force it to stop ourselves.
         log.warning("Invalid command line argument. Exiting Streamlit app.")
-        os._exit(e.code)
+        os._exit(e.code)  # exists streamlit subprocess without disrupting the main discord bot process
 
     # if player id is blank, don't load this page in streamlit app and instead display just overall pog stat
     
@@ -135,54 +215,105 @@ async def main():
 
     # Set page title and favicon.
     st.set_page_config(
-        page_title=f"{player_stats.name}'s POG Statistics", page_icon=POG_FAVICON,
+        page_title=f"{player_stats.name}'s POG Statistics", 
+        page_icon=POG_FAVICON
     )
+    activate_css()
 
+    st.image(POG_BANNER)
     st.title(f"{player_stats.name}'s POG Statistics")
-    st.caption(f"Discord id: {player_stats.id}  |  Generated: {dt.utcnow().strftime('%Y-%m-%d %H:%M:%S')} UTC")
+    st.caption(f"Discord id: {player_stats.id}  |  Generated: {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')} UTC")
     
-    # I intentionally acronyms because it's much more common in our community.
-    st.subheader(f"KDR: {round(player_stats.kdr, 2)}")  # Kill/Death Ratio
-    st.subheader(f"KPM: {round(player_stats.kpm, 2)}")  # Kills per Minute
-    st.subheader(f"% of matches as captain: {round(player_stats.cpm, 2)}")
-    st.subheader(f"Average kills per match: {round(player_stats.kills_per_match, 2)}")
+    # I intentionally acronyms as subheaders because it's much more common in our community 
+    # KPM = kills per minute, KDR = kill/death ratio
+    # I'm not a fan of writing HTML in python but there seems to be no pythonic way to customize streamlit styling
+    # we have to use spans to ensure that text is printed across the same line
+    st.markdown(f"<p class='h1'>Matches played: <span class='bold'>{player_stats.num_matches_played}</span></p>", unsafe_allow_html=True)
+    st.markdown(f"<p class='h1'>Time played: <span class='bold'>{timedelta(minutes=player_stats.time_played)}", unsafe_allow_html=True)
+    st.markdown(f"<p class='h1'>KDR: <span class='bold {get_color(player_stats.kdr)}'>{round(player_stats.kdr, 2)}</span> | \
+        KPM: <span class='bold {get_color(player_stats.kpm)}'>{round(player_stats.kpm, 2)}</span></p>", unsafe_allow_html=True)
+    st.markdown(f"<p class='h1'>% of matches as captain: <span class='bold'>{round(player_stats.cpm, 2)}</span></p>", unsafe_allow_html=True)
+    st.markdown(f"<p class='h1'>Average kills per match: <span class='bold'>{round(player_stats.kills_per_match, 2)}</span></p>", unsafe_allow_html=True)
     
 
+    df_loadout_scores = pd.DataFrame.from_dict(player_stats.loadout_scores, orient='index', columns=['Score'])
+    st.header("Total Score per Loadout")
+    st.bar_chart(df_loadout_scores)
+
+    df_loadout_kdrs = pd.DataFrame.from_dict(player_stats.loadout_kdrs, orient='index', columns=['KDR'])
+    st.header("KDR per Loadout")
+    st.bar_chart(df_loadout_kdrs)
+
+
+    fig1, ax1 = plt.subplots()
+    ax1.pie([player_stats.matches_won, player_stats.matches_lost], labels=["Wins", "Losses"], autopct='%1.1f%%', startangle=90)
+    ax1.axis('equal')  # Equal aspect ratio ensures that pie is drawn as a circle.
+    st.pyplot(fig1)
 
     
 
-    loadout_scores = [loadout.score for loadout in player_stats.loadouts.values()]
-    loadout_ids = [loadout.id for loadout in player_stats.loadouts.values()]
-    loadout_scores_dict = dict(zip(loadout_ids, loadout_scores)) 
-
-    merged_loadouts = {
-    "Infiltrator": 0,
-    "Light Assault": 0,
-    "Medic": 0,
-    "Engineer": 0,
-    "Heavy Assault": 0,
-    "Max": 0
-    }
-
-    # as can be seen in loadout_ids_dict, there are some ids that correspond to the same loadout, so we need to merge them.
-    for loadout_id in loadout_scores_dict:
-        for loadout_name in LOADOUT_IDS_DICT:
-            if loadout_id in LOADOUT_IDS_DICT[loadout_name]:
-                merged_loadouts[loadout_name] += loadout_scores_dict[loadout_id]
-
-    df_loadout_scores = pd.DataFrame.from_dict(merged_loadouts, orient='index', columns=['Total Score'])
-    df_loadout_scores['Average Score'] = round(df_loadout_scores['Total Score'] / player_stats.nb_matches_played, 2)
-
-    df_loadout_scores
-
-    st.header("Total Score per Class")
-    st.bar_chart(df_loadout_scores['Total Score'])
+    # we use a numpy matrix of 1s and 0s to create a visualization of games played vs not played,
+    # where a colored square of the matrix indicates a match played a gray square indicates not played.
+    # it's a bit like a waffle chart, but simpler since it doesn't need to group values
+    win_loss_matrix = np.zeros(max(player_stats.matches) + 1)
     
-    st.header("Average Score per Class")
-    st.bar_chart(df_loadout_scores['Average Score'])
+    for match in player_stats.matches:  # one-hot encoding
+        win_loss_matrix[match] = 1
+    
+
+    st.header("Matches Played vs Not Played")
+    st.markdown("Last 1024 matches")
+    # because we want to display a square matrix, we drop values at the start of the array. We can use a 32x32 matrix.
+    # this is fine because we don't have match data before 569 anyways, and the graph isn't designed to be perfect,
+    # just a quick visual representation of matches played vs not played recently
+    grid_size = 32
+    win_loss_matrix = win_loss_matrix[-(grid_size*grid_size):]  # select only the most recent n*n matches, so we can display a square matrix. Here we choose 32*32 = 1024.
+    win_loss_matrix = np.reshape(win_loss_matrix, (grid_size, grid_size))
+
+    # Define colormap for matches played vs not played
+    cmapmine = ListedColormap(['grey', 'lawngreen'], N=2)
+
+    # Plot the matrix
+    win_loss_fig = plt.figure()
+    plt.imshow(win_loss_matrix, cmap=cmapmine, vmin=0, vmax=1)
+    win_loss_fig.axes[0].set_xticks([]) # remove x axis labels
+    win_loss_fig.axes[0].set_yticks([]) # remove y axis labels
+    st.pyplot(win_loss_fig)
+
+    st.markdown(player_stats.pick_order.keys())
+    player_stats.pick_order.values()
+
+    plt.rcdefaults()
+    fig, ax = plt.subplots()
+
+    st.header("Pick order")
+    # Example data
+    pick_order_index = range(2, 12)
+    # we can't use player_stats.pick_order.keys() to get the pick order because it sometimes has values outside 2-6. 
+    # values of 0 and 1 in the keys are for captain, and values above 12 occur if there are substitutions mid-match. 
+    # to make this graph cleaner, we'll only include the first 10 picks, and start the index at 2 to ignore the captain slots 0 and 1.
+    
+    y_pos = np.arange(len(pick_order_index))
+    pick_order = []
+    for label in pick_order_index:
+        if str(label) in player_stats.pick_order.keys(): 
+            pick_order.append(player_stats.pick_order[str(label)])
+        else:
+            # if a player was never picked in a given slot, set number of picks for that slot to 0
+            pick_order.append(0)
+
+    # For people viewing the graph, we are going to start the labels at 1 which means first pick
+    # this is much more intuitive for an end user who doesn't know/care that 0 and 1 are for captains
+    labels = range(1, 11)
+
+    ax.barh(y_pos, pick_order, align='center')
+    ax.set_yticks(y_pos, labels=labels)
+    ax.invert_yaxis()
+    ax.set_xlabel('Number of times picked')
+
+    st.pyplot(fig)
 
     st.markdown(args.player_stats[0])
-
     # Once we have the dependencies, add a selector for the app mode on the sidebar.
     st.sidebar.title("What to do")
     app_mode = st.sidebar.selectbox("Choose the app mode",
@@ -196,9 +327,7 @@ async def main():
         readme_text.empty()
         run_the_app()
 
-    # Display header.
-    st.markdown("<br>", unsafe_allow_html=True)
-    st.image(POG_BANNER, width=600)
+    
 
 
 # This is the main app app itself, which appears when the user selects "Run the app".
@@ -228,26 +357,6 @@ def run_the_app():
     # metadata = load_metadata(os.path.join(DATA_URL_ROOT, "labels.csv.gz"))
     # summary = create_summary(metadata)
 
-    # # Uncomment these lines to peek at these DataFrames.
-    # # st.write('## Metadata', metadata[:1000], '## Summary', summary[:1000])
-
-    # # Draw the UI elements to search for objects (pedestrians, cars, etc.)
-    # selected_frame_index, selected_frame = frame_selector_ui(summary)
-    # if selected_frame_index == None:
-    #     st.error("No frames fit the criteria. Please select different label or number.")
-    #     return
-
-    # # Draw the UI element to select parameters for the YOLO object detector.
-    # confidence_threshold, overlap_threshold = object_detector_ui()
-
-    # # Load the image from S3.
-    # image_url = os.path.join(DATA_URL_ROOT, selected_frame)
-    # image = load_image(image_url)
-
-    # # Add boxes for objects on the image. These are the boxes for the ground image.
-    # boxes = metadata[metadata.frame == selected_frame].drop(columns=["frame"])
-    # draw_image_with_boxes(image, boxes, "Ground Truth",
-    #     "**Human-annotated data** (frame `%i`)" % selected_frame_index)
     pass
 
 # This sidebar UI is a little search engine to find certain object types.
@@ -316,4 +425,6 @@ def get_file_content_as_string(path):
     pass
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    # we run this asynchronously to avoid blocking the main thread when starting streamlit.
+    # Also, if we ever want to integrate class methods from stats.py, we'll need to await the function calls.
+    asyncio.run(main()) 
