@@ -322,7 +322,13 @@ class StreamlitApp:
         # if URL query strings end up being desired, read https://github.com/streamlit/streamlit/issues/430
         # passing the data as a json object is not very pythonic BUT it is the most flexible if we move the streamlit app to a different environment. I've decided to use a json object for now just for this added flexibility.
         # using a json file also has the added benefit of not needing to do any database opeterations within our streamlit app, making it much more modular. Also jsonpickle makes it easy to change between python objects and json
-        self.process = subprocess.Popen(["streamlit", "run", "./modules/interactive_stats.py", "--server.port", str(self.server_port), "--", "--player_id", str(self.player_id), "--player_name", str(self.player_name), "--player_stats", jsonpickle.encode(self.player_stats)]) #, preexec_fn=os.setsid)  # unfortunately we can't use setsid on windows, only linux. TLDR don't deploy this on windows lol.
+        self.process = subprocess.Popen(
+            ["streamlit", "run", "./modules/interactive_stats.py",
+            "--server.port", str(self.server_port), "--",
+            "--player_id", str(self.player_id),
+            "--player_name", str(self.player_name),
+            "--player_stats", jsonpickle.encode(self.player_stats)]
+            ) #, preexec_fn=os.setsid)  # unfortunately we can't use setsid on windows, only linux. TLDR don't deploy this on windows lol.
         self.url = f"http://localhost:{self.server_port}/"
 
 

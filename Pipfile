@@ -17,6 +17,7 @@ Pillow = "==8.4.0"
 streamlit = "*"
 jsonpickle = "*"
 matplotlib = "*"
+pylint = "*"
 
 [dev-packages]
 sphinx = "==4.2.0"
