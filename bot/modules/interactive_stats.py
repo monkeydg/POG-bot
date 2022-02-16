@@ -420,7 +420,7 @@ def display_source_code():
     """
     # query from github to allow us to more easily move
     # interactive_stats.py to a different ec2 instance later
-    url = "http://bit.do/github-repo-shortened-link-because-apparently-we-need-a-perfect-lint-score"
+    url = "http://bit.do/github-shortened-link-because-apparently-we-need-a-perfect-lint-score"
     with urllib.request.urlopen(url) as response:
         text = response.read().decode("utf-8")
     st.code(text)
