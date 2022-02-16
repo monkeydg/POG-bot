@@ -17,6 +17,8 @@ import urllib
 from datetime import datetime, timedelta
 from logging import getLogger
 from collections import Counter
+import operator
+from functools import reduce
 import jsonpickle
 import numpy as np
 import pandas as pd
@@ -24,8 +26,14 @@ import matplotlib.pyplot as plt
 from matplotlib.colors import ListedColormap
 import plotly.figure_factory as ff
 import streamlit as st
+import ptvsd
+ptvsd.enable_attach(address=('localhost', 5678))
 
-log = getLogger("pog_bot")
+IS_STANDALONE = False  # delete this flag for production
+if not IS_STANDALONE:
+    from classes import stats # conditional import for standalone testing
+
+log = getLogger("streamlit")
 
 # If we integrate this code into the rest of the pog bot, we can pull the length of 
 # each match half from config.cfg instead of declaring it here
@@ -203,34 +211,35 @@ class MatchlogStat:
     @property
     def switching_sides_wait(self):
         """ Returns the time spent between rounds to switch sides """
-        return self.rounds_start[1] - self.rounds_end[0]
+        # the operator module allows us to add datetimes while maintaining it as a timedelta object
+        return reduce(operator.sub, self.rounds_start[1] - self.rounds_end[0])
 
     @property
     def login_wait(self):
         """ Returns the time spent between faction selected and round 1 beginning"""
-        return self.rounds_start[0] - self.factions[1].faction_timestamp
+        return reduce(operator.sub, self.rounds_start[0] - self.factions[1].faction_timestamp)
 
     @property
     def faction_wait(self):
         """ Returns the time spent waiting for faction selection"""
-        return self.factions[1].faction_timestamp - self.teams_end
+        return reduce(operator.sub, self.factions[1].faction_timestamp - self.teams_end)
 
     @property
     def team_pick_wait(self):
         """ Returns the time spent waiting for team selection"""
-        return self.teams_end - self.captains[1].captain_timestamp
+        return reduce(operator.sub, self.teams_end - self.captains[1].captain_timestamp)
 
     @property
     def captain_pick_wait(self):
         """ Returns the time spent waiting for captain selection"""
-        return self.captains[1].captain_timestamp - self.match_start
+        return reduce(operator.sub, self.captains[1].captain_timestamp - self.match_start)
 
     @property
     def total_wait(self):
         """ Returns the time spent between match start and end where players
         were not playing (eg picking teams, switching sides)
         """
-        return sum([self.login_wait, self.faction_wait, self.team_pick_wait, self.captain_pick_wait, self.switching_sides_wait])
+        return reduce(operator.add, self.login_wait, self.faction_wait, self.team_pick_wait, self.captain_pick_wait, self.switching_sides_wait)
 
 def get_all_captains(all_matches):
     """ Returns a counted dict of all captains in the matchlog """
@@ -279,17 +288,16 @@ def merge_loadout_ids(unmerged_dict):
 
     return merged
 
-def dump_pkl(json_file, file_path="cli_args.pkl"):
+def dump_pkl(obj, file_path):
     """
-    This is only used for dumping a json file for standalone testing/debugging
+    This is only used for dumping a pickle file for standalone testing/debugging
     """
     with open(file_path, 'wb') as pkl_file:
-        pickle.dump(json_file, pkl_file)
+        pickle.dump(obj, pkl_file)
 
-def fetch_pkl(file_path="cli_args.pkl"):
+def fetch_pkl(file_path):
     """
-    This is only used for fetching a pkl file with json object
-    for standalone testing/debugging
+    This is only used for fetching a pickle file for standalone testing/debugging
     """
     with open(file_path, 'rb') as pkl_file:
         pkl_file = pickle.load(pkl_file)
@@ -383,10 +391,10 @@ def parse_cli():
 
         # initiate a new PlayerStats object with the input from CLI arguments
         player_data_frozen = args.player_stats[0]
-        player_data_unfrozen = jsonpickle.decode(player_data_frozen)
-        player_stats = PlayerStat(int(args.player_id[0]), args.player_name[0], player_data_unfrozen)
-
-        # initiate a new MatchStats object with the input from CLI arguments
+        player_stats = jsonpickle.decode(player_data_frozen)
+        #player_stats = PlayerStat(int(args.player_id[0]), args.player_name[0], player_data_unfrozen)  <-- deprecated
+        dump_pkl(player_stats, "player_stats.pkl") # <-- uncomment to dump player stats
+        # initiate a new list of MatchStats objects with the input from CLI arguments
         matchlog_data_frozen = args.matchlog_stats[0]
         matchlog_data_unfrozen = jsonpickle.decode(matchlog_data_frozen)
         all_matchlog_stats = [MatchlogStat(match) for match in matchlog_data_unfrozen]
@@ -397,23 +405,18 @@ def parse_cli():
         log.warning("Invalid command line argument. Exiting Streamlit app.")
         os._exit(exception.code)
 
+    return player_stats, all_matchlog_stats
+
+async def main(debug=False):
     timestamp = datetime.utcnow()
-    return player_data_frozen, player_stats, matchlog_data_frozen, all_matchlog_stats, timestamp
-
-async def main(pkl_data=None):
-    if not pkl_data:
-        player_data_frozen, player_stats, matchlog_stats, timestamp = parse_cli()
+    if not debug:
+        # initiate PlayerStats and MatchStats objects with the input from CLI arguments
+        player_stats, all_matchlog_stats, timestamp = parse_cli()
     else:
-        args = pkl_data
-        player_data_frozen = args.player_stats[0]
-        player_data_unfrozen = jsonpickle.decode(player_data_frozen)
-        player_stats = PlayerStat(int(args.player_id[0]), args.player_name[0], player_data_unfrozen)
-
-        # initiate a new MatchStats object with the input from CLI arguments
-        matchlog_data_frozen = args.matchlog_stats[0]
-        matchlog_data_unfrozen = jsonpickle.decode(matchlog_data_frozen)
-        all_matchlog_stats = [MatchlogStat(match) for match in matchlog_data_unfrozen]
-
+        # initiate PlayerStats and MatchStats objects from pickle files
+        player_stats = fetch_pkl("player_stats.pkl")
+        all_matchlog_stats = fetch_pkl("matchlog_stats.pkl")
+        breakpoint()
     # Set page title and favicon.
     st.set_page_config(
         page_title=f"{player_stats.name}'s POG Statistics",
@@ -434,7 +437,7 @@ async def main(pkl_data=None):
     elif app_mode == "Match logs":
         display_dashboard(all_matchlog_stats)
     elif app_mode == "Raw player data":
-        display_json_stats(player_data_frozen)
+        display_json_stats(jsonpickle.encode(player_stats))
     elif app_mode == "Streamlit source code":
         display_source_code()
 
@@ -455,9 +458,6 @@ def display_matchlogs(all_matchlog_stats):
             {timedelta(minutes=len(all_matchlog_stats)*MATCH_LENGTH)}",
         unsafe_allow_html=True
         )
-    
-    import streamlit as st
-    import numpy as np
 
     # Add histogram data
     x1 = sum([match.login_wait for match in all_matchlog_stats])
@@ -634,5 +634,4 @@ if __name__ == "__main__":
     # we run this asynchronously to avoid blocking the main thread when starting streamlit.
     # Also, if we ever want to integrate class methods from stats.py,
     # we'll need to await the function calls.
-    asyncio.run(main(pkl_data=fetch_pkl())) # delete pkl_data argument for production
-    #asyncio.run(main()) # delete pkl_data argument for production
+    asyncio.run(main(debug=IS_STANDALONE))

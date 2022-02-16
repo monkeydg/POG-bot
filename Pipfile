@@ -19,6 +19,7 @@ jsonpickle = "*"
 matplotlib = "*"
 pylint = "*"
 plotly = "*"
+ptvsd = "*"
 
 [dev-packages]
 sphinx = "==4.2.0"

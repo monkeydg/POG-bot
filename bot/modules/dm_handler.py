@@ -1,4 +1,4 @@
-from classes import Player, PlayerStat, MatchlogStat, StreamlitApp
+from classes import Player, PlayerStat, MatchlogStat, StreamlitApp, MyFancyClass
 from match.classes import Match
 import modules.config as cfg
 from display import AllStrings as disp, ContextWrapper
@@ -6,6 +6,8 @@ from logging import getLogger
 import modules.stat_processor as stat_processor
 import modules.spam_checker as spam_checker
 import modules.database as db
+
+from interactive_stats import dump_pkl
 
 log = getLogger("pog_bot")
 
