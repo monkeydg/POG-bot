@@ -14,78 +14,51 @@ from functools import reduce
 
 
 class PlayerStat:
-    """
-    Class used to track a player's statistics in a pythonic way instead of a dictionary.
-    The properties of this class are calculated from the data in the dictionary used to
-    initialize an instance of the class.
-    """
-    def __init__(self, player_id, name, data):
-        self.player_id = player_id
+    def __init__(self, player_id, name, data=None):
+        self.id = player_id
         self.name = name
-        self.matches = data["matches"]
-        self.matches_won = data["match_stats"]["nb_won"]
-        self.matches_lost = data["match_stats"]["nb_lost"]
-        self.time_played = data["time_played"]
-        self.times_captain = data["times_captain"]
-        self.pick_order = tools.AutoDict(data["pick_order"])
-        self.loadouts = {}
-        for loadout_data in data["loadouts"]:
-            loadout_id = loadout_data["id"]
-            self.loadouts[loadout_id] = LoadoutStats(loadout_id, loadout_data)
-        self.loadout_scores = self.generate_loadout_scores_dict()
-        self.loadout_kdrs = self.generate_loadout_kdrs_dict()
-
-    def generate_loadout_scores_dict(self):
-        """
-        Generates a dictionary of loadout scores for the player.
-        The dictionary key is the loadout name (e.g. "Medic") and the value is the score.
-        """
-        scores_list = [loadout.score for loadout in self.loadouts.values()]
-        ids_list = [loadout.loadout_id for loadout in self.loadouts.values()]
-        scores_dict_unmerged = dict(zip(ids_list, scores_list))
-
-        return merge_loadout_ids(scores_dict_unmerged)
-
-
-    def generate_loadout_kdrs_dict(self):
-        """
-        Generates a dictionary of kill/death ratios for each loadout for the player.
-        The dictionary key is the loadout name (e.g. "Medic") and the value is the kdr.
-        """
-        kdr_list = [loadout.kills/loadout.deaths for loadout in self.loadouts.values()]
-        ids_list = [loadout.loadout_id for loadout in self.loadouts.values()]
-        kdrs_dict_unmerged = dict(zip(ids_list, kdr_list))
-
-        return merge_loadout_ids(kdrs_dict_unmerged)
+        if data:
+            self.matches = data["matches"]
+            self.matches_won = data["match_stats"]["nb_won"]
+            self.matches_lost = data["match_stats"]["nb_lost"]
+            self.time_played = data["time_played"]
+            self.times_captain = data["times_captain"]
+            self.pick_order = tools.AutoDict(data["pick_order"])
+            self.loadouts = dict()
+            for l_data in data["loadouts"]:
+                l_id = l_data["id"]
+                self.loadouts[l_id] = LoadoutStats(l_id, l_data)
+        else:
+            self.matches = list()
+            self.matches_won = 0
+            self.matches_lost = 0
+            self.time_played = 0
+            self.times_captain = 0
+            self.pick_order = tools.AutoDict()
+            self.loadouts = dict()
 
     @property
-    def num_matches_played(self):
-        """ Returns the player's total number of matches played """
+    def nb_matches_played(self):
         return len(self.matches)
 
     @property
     def kills_per_match(self):
-        """ Returns the player's average kills per match """
-        return self.kpm * MATCH_LENGTH * 2
+        return self.kpm * cfg.general["round_length"] * 2
 
     @property
     def kpm(self):
-        """ Returns the player's kills per minute """
         if self.time_played == 0:
             return 0
         return self.kills / self.time_played
 
     @property
-    def cpm(self): # number of times captain on average
-        """ Returns the player's number of times as captain for matches played """
-        return self.times_captain / self.num_matches_played
+    def cpm(self):
+        if self.nb_matches_played < 10:
+            return 0
+        return self.times_captain / self.nb_matches_played
 
     @property
     def score(self):
-        """
-        Returns the player's total score
-        (see POG ruleset for details on calculation)
-        """
         score = 0
         for loadout in self.loadouts.values():
             score += loadout.score
@@ -93,7 +66,6 @@ class PlayerStat:
 
     @property
     def kills(self):
-        """ Returns the player's total kills """
         kills = 0
         for loadout in self.loadouts.values():
             kills += loadout.kills
@@ -101,7 +73,6 @@ class PlayerStat:
 
     @property
     def deaths(self):
-        """ Returns the player's total deaths """
         deaths = 0
         for loadout in self.loadouts.values():
             deaths += loadout.deaths
@@ -109,16 +80,31 @@ class PlayerStat:
 
     @property
     def net(self):
-        """ Returns the player's net score, where net = kills - deaths """
         net = 0
         for loadout in self.loadouts.values():
             net += loadout.score
         return net
 
     @property
-    def kdr(self):
-        """ Returns the player's kill/death ratio """
-        return self.kills / self.deaths
+    def most_played_loadout(self):
+        l_dict = tools.AutoDict()
+        for loadout in self.loadouts.values():
+            l_name = cfg.loadout_id[loadout.id]
+            l_dict.auto_add(l_name, loadout.weight)
+        try:
+            name = sorted(l_dict.items(), key=operator.itemgetter(1), reverse=True)[0][0]
+            n_l = name.split('_')
+            for i in range(len(n_l)):
+                n_l[i] = n_l[i][0].upper() + n_l[i][1:]
+            name = " ".join(n_l)
+        except IndexError:
+            name = "None"
+
+        return name
+
+    @property
+    def mention(self):
+        return f"<@{self.id}>"
 
     @classmethod
     async def get_from_database(cls, player_id, name):
@@ -154,6 +140,7 @@ class PlayerStat:
         dta["pick_order"] = self.pick_order
         dta["loadouts"] = [loadout.get_data() for loadout in self.loadouts.values()]
         return dta
+
 
 class LoadoutStats:
     def __init__(self, l_id, data=None):
@@ -304,12 +291,3 @@ class StreamlitApp:
     def kill(self):  # unfortunately we can't use this method on windows, only linux. TLDR don't use this method on windows lol.
         os.killpg(os.getpgid(self.process.pid), signal.SIGTERM)
         return "test"
-
-class MyFancyClass(object):
-    
-    def __init__(self, name):
-        self.name = name
-    
-    def do_something(self):
-        proc_name = mp.current_process().name
-        print ('Doing something fancy in %s for %s!' % (proc_name, self.name))

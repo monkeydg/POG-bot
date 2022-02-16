@@ -383,7 +383,7 @@ def parse_cli():
         '--matchlog_stats',
         action='append',
         default=[],
-        help="JSON representation of a MatchlogStat object containing match data about POG"
+        help="JSON representation of a MatchlogStat object containing matchlog data about POG"
         )
 
     try:
@@ -391,9 +391,12 @@ def parse_cli():
 
         # initiate a new PlayerStats object with the input from CLI arguments
         player_data_frozen = args.player_stats[0]
-        player_stats = jsonpickle.decode(player_data_frozen)
+        player_data_unfrozen = jsonpickle.decode(player_data_frozen)
         #player_stats = PlayerStat(int(args.player_id[0]), args.player_name[0], player_data_unfrozen)  <-- deprecated
-        dump_pkl(player_stats, "player_stats.pkl") # <-- uncomment to dump player stats
+        #dump_pkl(player_stats, "player_stats.pkl") # <-- uncomment to dump player stats
+        # initiate a new PlayerStats object with the input from CLI arguments
+        player_stats = PlayerStat(int(args.player_id[0]), args.player_name[0], player_data_unfrozen)
+
         # initiate a new list of MatchStats objects with the input from CLI arguments
         matchlog_data_frozen = args.matchlog_stats[0]
         matchlog_data_unfrozen = jsonpickle.decode(matchlog_data_frozen)
@@ -405,18 +408,19 @@ def parse_cli():
         log.warning("Invalid command line argument. Exiting Streamlit app.")
         os._exit(exception.code)
 
-    return player_stats, all_matchlog_stats
+    return player_data_frozen, player_stats, all_matchlog_stats
 
 async def main(debug=False):
     timestamp = datetime.utcnow()
     if not debug:
         # initiate PlayerStats and MatchStats objects with the input from CLI arguments
-        player_stats, all_matchlog_stats, timestamp = parse_cli()
+        player_data_frozen, player_stats, all_matchlog_stats = parse_cli()
+        dump_pkl(player_data_frozen)
     else:
         # initiate PlayerStats and MatchStats objects from pickle files
         player_stats = fetch_pkl("player_stats.pkl")
         all_matchlog_stats = fetch_pkl("matchlog_stats.pkl")
-        breakpoint()
+
     # Set page title and favicon.
     st.set_page_config(
         page_title=f"{player_stats.name}'s POG Statistics",

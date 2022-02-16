@@ -1,4 +1,4 @@
-from classes import Player, PlayerStat, MatchlogStat, StreamlitApp, MyFancyClass
+from classes import Player, PlayerStat, MatchlogStat, StreamlitApp
 from match.classes import Match
 import modules.config as cfg
 from display import AllStrings as disp, ContextWrapper
