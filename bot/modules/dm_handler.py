@@ -1,10 +1,11 @@
-from classes import Player, PlayerStat, StreamlitApp
+from classes import Player, PlayerStat, MatchlogStat, StreamlitApp
 from match.classes import Match
 import modules.config as cfg
 from display import AllStrings as disp, ContextWrapper
 from logging import getLogger
 import modules.stat_processor as stat_processor
 import modules.spam_checker as spam_checker
+import modules.database as db
 
 log = getLogger("pog_bot")
 
@@ -39,7 +40,6 @@ async def on_stats(user):
     all_stats = await PlayerStat.get_from_database(176428787968376833, "Saiyan")
     #all_stats = await PlayerStat.get_from_database(player.id, player.name)
     recent_stats = await stat_processor.get_new_stats(Match, all_stats)
-    #pog_stats = await stat_processor.get_from_database(Match, all_stats)
-    #streamlit_url = await StreamlitApp.spawn(all_stats) #, pog_stats) # calls a method from streamlit module after passing in the player stats from the playerStats and newMatches collections from the mongodb database
-    streamlit_instance = StreamlitApp(player.id, player.name, all_stats) #, pog_stats) # spawns a streamlit app
+    pog_stats = await db.async_db_call(db.get_all_elements(MatchlogStat, "match_stats"))
+    streamlit_instance = StreamlitApp(player.id, player.name, all_stats, pog_stats) # spawns a streamlit app
     await disp.DISPLAY_STATS.send(user, stats=all_stats, recent_stats=recent_stats, streamlit_url=streamlit_instance.url) # displays streamlit url in discord bot DM using the strings.py and embeds.py modules

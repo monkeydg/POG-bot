@@ -18,6 +18,7 @@ streamlit = "*"
 jsonpickle = "*"
 matplotlib = "*"
 pylint = "*"
+plotly = "*"
 
 [dev-packages]
 sphinx = "==4.2.0"

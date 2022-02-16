@@ -1,14 +1,13 @@
 """ 
 STREAMLIT APP FOR PLANETSIDE OPEN GAMES
 Development can be followed at https://github.com/monkeydg/POG-bot/tree/stats
-This is a Streamlit app that displays statistics about a player in Planetside Open Games.
-Planetside Open Games, or POG, is a 6v6 matchmaking bot for the video game Planetside 2
-The bot is built around discord, with integrations into the game's API, Mongodb, and Teamspeak 3
-
-the goal is to avoid imports from the rest of the project where possible, so that we can
-later deploy the streamlit module on a separate ec2 instance with minimal refactoring
+This is a web app that displays player and game statistics for Planetside Open Games.
+Planetside Open Games, or POG, is a 6v6 matchmaking bot for the video game Planetside 2,
+built around discord, with integrations into the game's API, Mongodb, AWS, and Teamspeak 3.
 """
 
+# The goal is to avoid imports from the rest of the project where possible, so that we can
+# later deploy the streamlit module on a separate ec2 instance with minimal refactoring
 import os
 import argparse
 import asyncio
@@ -17,11 +16,13 @@ import pickle
 import urllib
 from datetime import datetime, timedelta
 from logging import getLogger
+from collections import Counter
 import jsonpickle
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 from matplotlib.colors import ListedColormap
+import plotly.figure_factory as ff
 import streamlit as st
 
 log = getLogger("pog_bot")
@@ -171,6 +172,89 @@ class PlayerStat:
         """ Returns the player's kill/death ratio """
         return self.kills / self.deaths
 
+class MatchlogStat:
+    """
+    Class used to track a match's statistics in a pythonic way instead of a dictionary.
+    The properties of this class are calculated from the data in the dictionary used to
+    initialize an instance of the class.
+    """
+    class CaptainStat:
+        def __init__(self, captain_data):
+            self.captain_id = captain_data["player"]
+            self.captain_team = captain_data["team"]
+            self.captain_timestamp = datetime.fromtimestamp(captain_data["timestamp"])
+
+    class FactionStat:
+        def __init__(self, faction_data):
+            self.faction_name = faction_data["faction"]
+            self.faction_team = faction_data["team"]
+            self.faction_timestamp = datetime.fromtimestamp(faction_data["timestamp"])
+
+    def __init__(self, match_data):
+        self.match_id = match_data["_id"]
+        self.match_start = datetime.fromtimestamp(match_data["match_launching"])
+        self.match_end = datetime.fromtimestamp(match_data["match_over"])
+        self.teams_end = datetime.fromtimestamp(match_data["teams_done"])
+        self.rounds_start = [datetime.fromtimestamp(match_data["rounds"][0]["timestamp"]), datetime.fromtimestamp(match_data["rounds"][2]["timestamp"])]
+        self.rounds_end = [datetime.fromtimestamp(match_data["rounds"][1]["timestamp"]), datetime.fromtimestamp(match_data["rounds"][3]["timestamp"])]
+        self.captains = [self.CaptainStat(match_data["captains"][0], match_data["captains"][1])]
+        self.factions = [self.FactionStat(match_data["factions"][0], match_data["factions"][1])]
+
+    @property
+    def switching_sides_wait(self):
+        """ Returns the time spent between rounds to switch sides """
+        return self.rounds_start[1] - self.rounds_end[0]
+
+    @property
+    def login_wait(self):
+        """ Returns the time spent between faction selected and round 1 beginning"""
+        return self.rounds_start[0] - self.factions[1].faction_timestamp
+
+    @property
+    def faction_wait(self):
+        """ Returns the time spent waiting for faction selection"""
+        return self.factions[1].faction_timestamp - self.teams_end
+
+    @property
+    def team_pick_wait(self):
+        """ Returns the time spent waiting for team selection"""
+        return self.teams_end - self.captains[1].captain_timestamp
+
+    @property
+    def captain_pick_wait(self):
+        """ Returns the time spent waiting for captain selection"""
+        return self.captains[1].captain_timestamp - self.match_start
+
+    @property
+    def total_wait(self):
+        """ Returns the time spent between match start and end where players
+        were not playing (eg picking teams, switching sides)
+        """
+        return sum([self.login_wait, self.faction_wait, self.team_pick_wait, self.captain_pick_wait, self.switching_sides_wait])
+
+def get_all_captains(all_matches):
+    """ Returns a counted dict of all captains in the matchlog """
+    captains_list = []
+    for match in all_matches:
+        for captain in match.captains:
+            captains_list.append(captain.captain_id)
+    return Counter(captains_list).most_common()
+
+def get_teams_factions(all_matches):
+    """ Returns two counted dicts of factions selected in the matchlog (one dict per team) """
+    team_0_factions = []
+    team_1_factions = []
+    for match in all_matches:
+        team_0_factions.append(match.faction[0].faction_name)
+        team_1_factions.append(match.faction[1].faction_name)
+    return Counter(team_0_factions).most_common(), Counter(team_1_factions).most_common()
+
+def get_match_start_hours(all_matches):
+    """ Returns a counted dict of what hour matches start in the matchlog """
+    hours_list = []
+    for match in all_matches:
+        hours_list.append(match.match_start.hour)
+    return sorted(Counter(hours_list).items())
 
 def merge_loadout_ids(unmerged_dict):
     """
@@ -287,14 +371,25 @@ def parse_cli():
         default=[],
         help="JSON representation of a PlayerStat object containing data about the given player"
         )
+    parser.add_argument(
+        '--matchlog_stats',
+        action='append',
+        default=[],
+        help="JSON representation of a MatchlogStat object containing match data about POG"
+        )
 
     try:
-        args = parser.parse_args() # get player id, name, and stats from CLI arguments
-        json_data = args.player_stats[0]
-        data = jsonpickle.decode(json_data)
+        args = parser.parse_args() # get player id, name, player stats, and match stats from CLI arguments
 
         # initiate a new PlayerStats object with the input from CLI arguments
-        player_stats = PlayerStat(int(args.player_id[0]), args.player_name[0], data)
+        player_data_frozen = args.player_stats[0]
+        player_data_unfrozen = jsonpickle.decode(player_data_frozen)
+        player_stats = PlayerStat(int(args.player_id[0]), args.player_name[0], player_data_unfrozen)
+
+        # initiate a new MatchStats object with the input from CLI arguments
+        matchlog_data_frozen = args.matchlog_stats[0]
+        matchlog_data_unfrozen = jsonpickle.decode(matchlog_data_frozen)
+        all_matchlog_stats = [MatchlogStat(match) for match in matchlog_data_unfrozen]
     except SystemExit as exception:
         # This exception will be raised if an invalid command line argument is used.
         # Streamlit doesn't exit gracefully so we have to force it to stop ourselves.
@@ -303,17 +398,21 @@ def parse_cli():
         os._exit(exception.code)
 
     timestamp = datetime.utcnow()
-    return json_data, player_stats, timestamp
+    return player_data_frozen, player_stats, matchlog_data_frozen, all_matchlog_stats, timestamp
 
 async def main(pkl_data=None):
     if not pkl_data:
-        json_data, player_stats, timestamp = parse_cli()
+        player_data_frozen, player_stats, matchlog_stats, timestamp = parse_cli()
     else:
         args = pkl_data
-        json_data = args.player_stats[0]
-        data = jsonpickle.decode(json_data)
-        player_stats = PlayerStat(int(args.player_id[0]), args.player_name[0], data)
-        timestamp = datetime.utcnow()
+        player_data_frozen = args.player_stats[0]
+        player_data_unfrozen = jsonpickle.decode(player_data_frozen)
+        player_stats = PlayerStat(int(args.player_id[0]), args.player_name[0], player_data_unfrozen)
+
+        # initiate a new MatchStats object with the input from CLI arguments
+        matchlog_data_frozen = args.matchlog_stats[0]
+        matchlog_data_unfrozen = jsonpickle.decode(matchlog_data_frozen)
+        all_matchlog_stats = [MatchlogStat(match) for match in matchlog_data_unfrozen]
 
     # Set page title and favicon.
     st.set_page_config(
@@ -329,14 +428,54 @@ async def main(pkl_data=None):
         "Mostly for dev use",
         ["Display dashboard", "Raw player data", "Streamlit source code"]
         )
+    st.sidebar.success(f"Data from: {timestamp.strftime('%Y-%m-%d %H:%M:%S')} UTC")
     if app_mode == "Display dashboard":
         display_dashboard(player_stats)
-        st.sidebar.success(f"Data from: {timestamp.strftime('%Y-%m-%d %H:%M:%S')} UTC")
+    elif app_mode == "Match logs":
+        display_dashboard(all_matchlog_stats)
     elif app_mode == "Raw player data":
-        display_json_stats(json_data)
-        st.sidebar.success(f"Data from: {timestamp.strftime('%Y-%m-%d %H:%M:%S')} UTC")
+        display_json_stats(player_data_frozen)
     elif app_mode == "Streamlit source code":
         display_source_code()
+
+def display_matchlogs(all_matchlog_stats):
+    """
+    Streamlit layout for the match logs over time page.
+    """
+    st.title(f"Match Logs Statistics")
+    st.caption(f"Match data collected from match 569 onwards")
+
+    st.markdown(
+        f"<p class='h1'>Total matches played: <span class='bold'>\
+            {len(all_matchlog_stats)}</span></p>",
+        unsafe_allow_html=True
+        )
+    st.markdown(
+        f"<p class='h1'>Total time played: <span class='bold'>\
+            {timedelta(minutes=len(all_matchlog_stats)*MATCH_LENGTH)}",
+        unsafe_allow_html=True
+        )
+    
+    import streamlit as st
+    import numpy as np
+
+    # Add histogram data
+    x1 = sum([match.login_wait for match in all_matchlog_stats])
+    x2 = sum([match.faction_wait for match in all_matchlog_stats])
+    x3 = sum([match.team_pick_wait for match in all_matchlog_stats])
+
+    # Group data together
+    hist_data = [x1, x2, x3]
+
+    group_labels = ['Group 1', 'Group 2', 'Group 3']
+
+    # Create distplot with custom bin_size
+    fig = ff.create_distplot(
+            hist_data, group_labels, bin_size=[.1, .25, .5])
+
+    # Plot!
+    st.plotly_chart(fig, use_container_width=True)
+
 
 def display_json_stats(json_data):
     """
