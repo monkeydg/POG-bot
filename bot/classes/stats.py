@@ -176,7 +176,7 @@ class MatchlogStat:
     The properties of this class are calculated from the data in the dictionary used to
     initialize an instance of the class.
     """
-    _all_matchlogs = dict()
+    _all_matchlogs = {}
 
     class CaptainStat:
         def __init__(self, captain_data):
@@ -190,20 +190,31 @@ class MatchlogStat:
             self.faction_team = faction_data["team"]
             self.faction_timestamp = datetime.fromtimestamp(faction_data["timestamp"])
 
-    def __init__(self, match_id, match_data):
+    def __init__(self, match_data):
+        if match_data["_id"] == 3529:
+            breakpoint = True
+
+
         self.match_id = match_data["_id"]
         self.match_start = datetime.fromtimestamp(match_data["match_launching"])
         self.match_end = datetime.fromtimestamp(match_data["match_over"])
         self.teams_end = datetime.fromtimestamp(match_data["teams_done"])
         self.rounds_start = [datetime.fromtimestamp(match_data["rounds"][0]["timestamp"]), datetime.fromtimestamp(match_data["rounds"][2]["timestamp"])]
         self.rounds_end = [datetime.fromtimestamp(match_data["rounds"][1]["timestamp"]), datetime.fromtimestamp(match_data["rounds"][3]["timestamp"])]
-        self.captains = [self.CaptainStat(match_data["captains"][0], match_data["captains"][1])]
-        self.factions = [self.FactionStat(match_data["factions"][0], match_data["factions"][1])]
+        self.captains = [self.CaptainStat(match_data["captains"][0]), self.CaptainStat(match_data["captains"][1])]
+        self.factions = [self.FactionStat(match_data["factions"][0]), self.FactionStat(match_data["factions"][1])]
+        MatchlogStat._all_matchlogs[self.match_id] = self
     
     @classmethod
-    def get(self, match_id):
-        return self._all_matchlogs.get(match_id)
+    def get_all(self):
+        return self._all_matchlogs
     
+    @classmethod
+    def delete_one(self, match_data):
+        print(self._all_matchlogs)
+        id_to_delete = match_data["_id"]
+        print(id_to_delete)
+        del (self._all_matchlogs[id_to_delete])
 
 
 class StreamlitApp:

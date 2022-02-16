@@ -197,8 +197,8 @@ class MatchlogStat:
         self.teams_end = datetime.fromtimestamp(match_data["teams_done"])
         self.rounds_start = [datetime.fromtimestamp(match_data["rounds"][0]["timestamp"]), datetime.fromtimestamp(match_data["rounds"][2]["timestamp"])]
         self.rounds_end = [datetime.fromtimestamp(match_data["rounds"][1]["timestamp"]), datetime.fromtimestamp(match_data["rounds"][3]["timestamp"])]
-        self.captains = [self.CaptainStat(match_data["captains"][0], match_data["captains"][1])]
-        self.factions = [self.FactionStat(match_data["factions"][0], match_data["factions"][1])]
+        self.captains = [self.CaptainStat(match_data["captains"][0]), self.CaptainStat(match_data["captains"][1])]
+        self.factions = [self.FactionStat(match_data["factions"][0]), self.FactionStat(match_data["factions"][1])]
 
     @property
     def switching_sides_wait(self):

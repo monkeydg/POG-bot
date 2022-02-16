@@ -37,7 +37,7 @@ def init(config: dict):
         _collections[collection] = db[config["collections"][collection]]
 
 
-def get_all_elements(init_class_method: Callable, collection: str):
+def get_all_elements(init_class_method: Callable, collection: str, drop_nulls=False) -> list:
     """
     Get all elements of a given collection.
 
@@ -48,11 +48,15 @@ def get_all_elements(init_class_method: Callable, collection: str):
     # Get all elements
     items = _collections[collection].find()
     # Pass them to the method
-    try:
-        for result in items:
+    for result in items:
+        try:
             init_class_method(result)
-    except KeyError as e:
-        raise DatabaseError(f"KeyError when retrieving {collection} from database: {e}")
+        except KeyError as e: 
+            if drop_nulls: # if we dont care that an object in the collection is missing a value, we can just ignore that item and continue
+                pass
+            else:
+                raise DatabaseError(f"KeyError when retrieving {collection} from database: {e}")
+                break
 
 
 async def async_db_call(call: Callable, *args):

@@ -40,6 +40,7 @@ async def on_stats(user):
     all_stats = await PlayerStat.get_from_database(176428787968376833, "Saiyan")
     #all_stats = await PlayerStat.get_from_database(player.id, player.name)
     recent_stats = await stat_processor.get_new_stats(Match, all_stats)
-    pog_stats = await db.async_db_call(db.get_all_elements(MatchlogStat, "match_stats"))
-    streamlit_instance = StreamlitApp(player.id, player.name, all_stats, pog_stats) # spawns a streamlit app
+    await db.async_db_call(db.get_all_elements, MatchlogStat, "match_logs", True)  # True flag allows us to force the loop to continue even with bad match data, because some matches are cleared before finishing and as such may be missing data
+    matchlog_stats = MatchlogStat.get_all()
+    streamlit_instance = StreamlitApp(player.id, player.name, all_stats, matchlog_stats) # spawns a streamlit app
     await disp.DISPLAY_STATS.send(user, stats=all_stats, recent_stats=recent_stats, streamlit_url=streamlit_instance.url) # displays streamlit url in discord bot DM using the strings.py and embeds.py modules
