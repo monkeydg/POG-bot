@@ -36,8 +36,8 @@ async def on_stats(user):
     log.info(f"Stats request from player id: [{player.id}], name: [{player.name}]")
 
     #FOR DEGUBBING ONLY:
-    all_stats = await PlayerStat.get_from_database(176428787968376833, "Saiyan")
-    #all_stats = await PlayerStat.get_from_database(player.id, player.name)
+    #all_stats = await PlayerStat.get_from_database(176428787968376833, "Saiyan")
+    all_stats = await PlayerStat.get_from_database(player.id, player.name)
     recent_stats = await stat_processor.get_new_stats(Match, all_stats)
     #pog_stats = await stat_processor.get_from_database(Match, all_stats)
     #streamlit_url = await StreamlitApp.spawn(all_stats) #, pog_stats) # calls a method from streamlit module after passing in the player stats from the playerStats and newMatches collections from the mongodb database

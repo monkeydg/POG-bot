@@ -358,7 +358,6 @@ async def main(pkl_data=None):
     # and displays the correct page based on the user's sidebar selection.
     # """
 
-    pkl_data=None
     if not pkl_data:
         json_data, player_stats, timestamp, player_name = parse_cli()
     else:
