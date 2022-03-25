@@ -6,6 +6,8 @@ Planetside Open Games, or POG, is a 6v6 matchmaking bot for the video game Plane
 built around discord, with integrations into the game's API, Mongodb, AWS, and Teamspeak 3.
 """
 
+# todo: verification link to view stats dm'd to the player requesting stats
+
 # The goal is to avoid imports from the rest of the project where possible, so that we can
 # later deploy the streamlit module on a separate ec2 instance with minimal refactoring
 import os
