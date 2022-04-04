@@ -509,10 +509,10 @@ def display_dashboard(player_stats):
     st.title(f"{player_stats.name}'s POG Statistics")
     st.caption(f"Discord id: {player_stats.player_id}")
 
-    # I intentionally acronyms as subheaders because it's much more common in our community
+    # I intentionally used acronyms as subheaders because it's much more common in our community
     # KPM = kills per minute, KDR = kill/death ratio
     # I'm not a fan of writing HTML in python but there seems to be no pythonic way to customize
-    # streamlit styling we have to use spans to ensure that text is printed across the same line
+    # streamlit styling. We have to use spans to ensure that text is printed across the same line.
     st.markdown(
         f"<p class='h1'>Matches played: <span class='bold'>\
             {player_stats.num_matches_played}</span></p>",
